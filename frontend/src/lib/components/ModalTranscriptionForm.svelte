@@ -60,71 +60,96 @@
 		return a.localeCompare(b);
 	});
 
-	// Function that sends the data as a form to the backend
+	// Uploads a single job (either a file or, when file is null, the sourceUrl).
+	// progressCb receives 0-100 for the current item's upload progress.
+	function uploadOne(file, progressCb) {
+		let formData = new FormData();
+		formData.append('language', language);
+		formData.append('modelSize', modelSize);
+		formData.append('device', device == 'cuda' || device == 'cpu' ? device : 'cpu');
+
+		if (file) {
+			formData.append('sourceUrl', '');
+			formData.append('file', file);
+		} else {
+			formData.append('sourceUrl', sourceUrl);
+		}
+
+		return new Promise((resolve, reject) => {
+			const xhr = new XMLHttpRequest();
+
+			xhr.upload.addEventListener('progress', (event) => {
+				if (event.lengthComputable) {
+					progressCb(Math.round((event.loaded * 100) / event.total));
+				}
+			});
+
+			xhr.addEventListener('load', () => {
+				if (xhr.status === 200) {
+					resolve(xhr.response);
+				} else if (xhr.status === 401) {
+					reject('unauthorized');
+				} else {
+					reject(xhr.statusText || 'upload failed');
+				}
+			});
+
+			xhr.addEventListener('error', () => reject('network error'));
+
+			xhr.open('POST', `${CLIENT_API_HOST}/api/transcriptions`);
+			// Send the session cookie so the request is authenticated.
+			xhr.withCredentials = true;
+			xhr.send(formData);
+		});
+	}
+
+	// Function that sends one or more jobs to the backend.
 	async function sendForm() {
 		if (sourceUrl && !validateURL(sourceUrl)) {
 			toast.error('You must enter a valid URL.');
 			return;
 		}
 
-		if (!sourceUrl && !fileInput) {
+		const files = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
+
+		if (!sourceUrl && files.length === 0) {
 			toast.error('No file or URL.');
 			return;
 		}
 
-		let formData = new FormData();
-		formData.append('language', language);
-		formData.append('modelSize', modelSize);
-		if (device == 'cuda' || device == 'cpu') {
-			formData.append('device', device);
-		} else {
-			formData.append('device', 'cpu');
-		}
-		formData.append('sourceUrl', sourceUrl);
-		if (sourceUrl == '') {
-			formData.append('file', fileInput.files[0]);
-		}
+		// A source URL takes precedence and is treated as a single job.
+		const jobs = sourceUrl ? [null] : files;
+		const total = jobs.length;
+		let succeeded = 0;
 
-		return new Promise((resolve, reject) => {
-			const xhr = new XMLHttpRequest();
-
-			// Set up progress event listener
-			xhr.upload.addEventListener('progress', (event) => {
-				if (event.lengthComputable) {
-					const percentCompleted = Math.round((event.loaded * 100) / event.total);
-					uploadProgress.set(percentCompleted);
+		for (let i = 0; i < total; i++) {
+			try {
+				await uploadOne(jobs[i], (pct) => {
+					// Combine per-file progress into an overall percentage.
+					uploadProgress.set(Math.round(((i + pct / 100) / total) * 100));
+				});
+				succeeded++;
+			} catch (err) {
+				if (err === 'unauthorized') {
+					toast.error('Session expired. Please log in again.');
+					window.location.href = '/login';
+					return;
 				}
-			});
+				const name = jobs[i] ? jobs[i].name : sourceUrl;
+				toast.error(`Failed: ${name}`);
+			}
+		}
 
-			// Set up load event listener
-			xhr.addEventListener('load', () => {
-				if (xhr.status === 200) {
-					resolve(xhr.response);
-					toast.success('Success!');
-				} else {
-					reject(xhr.statusText);
-					toast.error('Upload failed');
-				}
-				uploadProgress.set(0); // Reset progress after completion
-			});
-
-			// Set up error event listener
-			xhr.addEventListener('error', () => {
-				reject(xhr.statusText);
-				toast.error('An error occurred during upload');
-				uploadProgress.set(0); // Reset progress on error
-			});
-
-			xhr.open('POST', `${CLIENT_API_HOST}/api/transcriptions`);
-			xhr.send(formData);
-		});
-
-		// Set file and sourceUrl to empty
-		sourceUrl = '';
-		fileInput.value = '';
 		uploadProgress.set(0);
+		if (succeeded > 0) {
+			toast.success(
+				total > 1 ? `Queued ${succeeded}/${total} files!` : 'Success!'
+			);
+		}
 
-		toast.success('Success!');
+		// Reset the form inputs.
+		sourceUrl = '';
+		if (fileInput) fileInput.value = '';
 	}
 
 	// Reactive statement
@@ -160,12 +185,13 @@
 		<div class="mt-0 space-y-2">
 			<div class="w-full max-w-xs form-control">
 				<label for="file" class="label">
-					<span class="label-text">Pick a file</span>
+					<span class="label-text">Pick one or more files</span>
 				</label>
 				<input
 					name="file"
 					bind:this={fileInput}
 					type="file"
+					multiple
 					class="w-full max-w-xs file-input file-input-sm file-input-bordered file-input-primary"
 				/>
 			</div>
