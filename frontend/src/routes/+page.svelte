@@ -81,6 +81,15 @@
 			socket.close(1000);
 		}
 	});
+
+	async function logout() {
+		try {
+			await fetch('/api/auth/logout', { method: 'POST' });
+		} catch (e) {
+			// ignore network errors; cookie will be cleared on next valid request
+		}
+		window.location.href = '/login';
+	}
 </script>
 
 <Toaster />
@@ -89,6 +98,11 @@
 <ModalTranscriptionForm />
 
 <header>
+	{#if data.authEnabled}
+		<div class="flex justify-end px-4 mt-4">
+			<button class="btn btn-sm btn-ghost" on:click={logout}>Log out</button>
+		</div>
+	{/if}
 	<h1 class="flex items-center justify-center mt-8 space-x-4 text-4xl font-bold">
 		<span>
 			<img class="w-20 h-20" src="/logo.svg" alt="Logo: a cloud whispering" />

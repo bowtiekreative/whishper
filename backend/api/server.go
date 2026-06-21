@@ -81,10 +81,24 @@ func (s *Server) BroadcastTranscription(t *models.Transcription) {
 }
 
 func (s *Server) SetupMiddleware() {
-	s.Router.Use(cors.New())
+	s.Router.Use(cors.New(cors.Config{
+		AllowOrigins:     "*",
+		AllowHeaders:     "Origin, Content-Type, Accept, X-API-Key",
+		AllowCredentials: false,
+	}))
+	// Protect the API. No-op unless WHISHPER_API_KEY is configured.
+	s.Router.Use(s.RequireAuth)
 }
 
 func (s *Server) RegisterRoutes() {
+	// Authentication routes (always reachable, not gated by RequireAuth).
+	s.Router.Post("/api/auth/login", func(c *fiber.Ctx) error {
+		return s.handleLogin(c)
+	})
+	s.Router.Post("/api/auth/logout", func(c *fiber.Ctx) error {
+		return s.handleLogout(c)
+	})
+
 	// Static routes
 	s.Router.Static("/api/video", os.Getenv("UPLOAD_DIR"))
 
