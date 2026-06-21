@@ -98,6 +98,9 @@ func (s *Server) RegisterRoutes() {
 	s.Router.Post("/api/auth/logout", func(c *fiber.Ctx) error {
 		return s.handleLogout(c)
 	})
+	s.Router.Get("/api/auth/verify", func(c *fiber.Ctx) error {
+		return s.handleVerify(c)
+	})
 
 	// Static routes
 	s.Router.Static("/api/video", os.Getenv("UPLOAD_DIR"))

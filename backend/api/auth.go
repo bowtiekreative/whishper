@@ -149,3 +149,25 @@ func (s *Server) handleLogout(c *fiber.Ctx) error {
 	})
 	return c.SendStatus(fiber.StatusOK)
 }
+
+// handleVerify is used by nginx's auth_request to gate static media files. It
+// returns 200 when the request is authenticated (or auth is disabled) and 401
+// otherwise. It accepts the same credentials as RequireAuth: an X-API-Key
+// header or a valid session cookie.
+func (s *Server) handleVerify(c *fiber.Ctx) error {
+	if !authEnabled() {
+		return c.SendStatus(fiber.StatusOK)
+	}
+
+	if key := c.Get("X-API-Key"); key != "" {
+		if hmac.Equal([]byte(key), []byte(os.Getenv("WHISHPER_API_KEY"))) {
+			return c.SendStatus(fiber.StatusOK)
+		}
+	}
+
+	if validateToken(c.Cookies(sessionCookieName)) {
+		return c.SendStatus(fiber.StatusOK)
+	}
+
+	return c.SendStatus(fiber.StatusUnauthorized)
+}

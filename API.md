@@ -100,10 +100,11 @@ curl -X DELETE http://localhost:8082/api/transcriptions/<id> \
 | DELETE | `/api/transcriptions/:id`         | Delete a transcription              |
 | GET    | `/api/translate/:id/:target`      | Translate a transcription           |
 
-## Notes & limitations
+## Notes
 
-- Uploaded media files are served by nginx at `/api/video/...` and are **not**
-  behind the API key. If you need those protected too, add auth at the nginx
-  layer.
+- Uploaded media files at `/api/video/...` are also protected: nginx uses an
+  `auth_request` subrequest (`/api/auth/verify`) to require a valid session
+  cookie or `X-API-Key` before serving them. This is a no-op when auth is
+  disabled.
 - The "new transcription" dialog in the web UI now accepts **multiple files at
   once** — each selected file is queued as its own transcription job.
